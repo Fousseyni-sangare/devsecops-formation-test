@@ -1,12 +1,14 @@
 import { FC } from "react";
+import React, { useState } from 'react';
 import { Logo } from "@/widgets";
 import Menu from "../Menu/Menu";
 
 const LayoutHeader: FC = () => {
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   return (
     <>
       <header>
-        <nav className="navbar bg-base-100">
+        {/* <nav className="navbar bg-base-100">
           <Menu
             links={[
               { name: "Homepage", href: "/" },
@@ -14,7 +16,7 @@ const LayoutHeader: FC = () => {
               { name: "About", href: "/about" },
             ]}
           />
-          <Logo logoName={"daisyUI"} />
+          <Logo logoName={"kibaroCert"} />
           <div className="navbar-end">
             <button className="btn-ghost btn-circle btn">
               <svg
@@ -52,7 +54,48 @@ const LayoutHeader: FC = () => {
               </div>
             </button>
           </div>
-        </nav>
+        </nav> */}
+        <nav className="bg-[#0b3855] border-b-2 border-white">
+        <div className="max-w-7xl mx-auto flex items-center justify-between h-24 px-4 border-b border-solid border-slate-600">
+        <div className="flex-shrink-0 font-bold tracking-wider text-3xl text-white">
+          KibaroCert
+        </div>
+        <div className="hidden md:block">
+        <Menu
+            links={[
+              { name: "Accueil", href: "/", selected: true },
+              { name: "Digitaliser", href: "/portfolio", selected: false },
+              { name: "Vérifier", href: "/about", selected: false },
+              // { name: "Se déconnecter", href: "/about", selected: false },
+            ]}
+          />
+        </div>
+        <button
+          type="button"
+          className="md:hidden bg-gray-900 inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:bg-gray-700 focus:text-white transition duration-150 ease-in-out"
+          onClick={() => setShowMobileMenu(!showMobileMenu)}>
+          <svg
+            className="h-6 w-6"
+            stroke="currentColor"
+            fill="none"
+            viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M4 6h16M4 12h16M4 18h16"
+            ></path>
+          </svg>
+        </button>
+      </div>
+      {showMobileMenu && <Menu
+            links={[
+              { name: "Se connecter", href: "/", selected: false },
+              { name: "S'enregistrer", href: "/portfolio", selected: false },
+              // { name: "About", href: "/about" },
+            ]}
+          />}
+    </nav>
       </header>
     </>
   );

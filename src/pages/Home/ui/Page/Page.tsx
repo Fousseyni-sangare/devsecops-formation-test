@@ -4,7 +4,23 @@ const Home: FC = () => {
   return (
     <>
       <section>
-        <div className="hero min-h-[calc(100vh-64px)] bg-base-200">
+      <div className="hero min-h-[calc(100vh-64px)] bg-[#0b3855]">
+          <div className="hero-content flex-col lg:flex-row py-6">
+            <p className="font-rubik font-bold text-4xl text-white">Garantissez en un clic l'authenticité de votre diplôme et vos références professionnelles avec kibaroCert!
+              <br /><br />
+              <button className="btn-primary btn">Commencer maintenant</button>
+              <br /><br />
+            </p>
+
+            <div>
+              <img
+                src="https://tecdn.b-cdn.net/img/Photos/new-templates/bootstrap-login-form/draw2.svg"
+                className="w-full"
+                alt="Phone image" />
+            </div>
+          </div>
+        </div>
+        <div className="hero min-h-[calc(100vh-64px)] bg-[#0b3855]">
           <div className="hero-content flex-col lg:flex-row">
             <img
               src="/images/hero.webp"

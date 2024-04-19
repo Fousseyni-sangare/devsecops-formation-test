@@ -1,40 +1,25 @@
 import { FC } from "react";
-import { Menu } from "../../model/types";
+import { MenuItems } from "../../model/types";
 import { Link } from "react-router-dom";
 
-const Menu: FC<Menu> = ({ links }: Menu) => {
+const Menu: FC<MenuItems> = ({ links }: MenuItems) => {
   return (
     <>
-      <div className="navbar-start">
-        <div className="dropdown">
-          <label tabIndex={0} className="btn-ghost btn-circle btn">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M4 6h16M4 12h16M4 18h7"
-              />
-            </svg>
-          </label>
-          <ul
-            tabIndex={0}
-            className="dropdown-content menu rounded-box menu-sm z-50 mt-3 w-52 bg-base-100 p-2 shadow"
-          >
-            {links.map((link) => (
-              <li key={link.name}>
-                <Link to={link.href}>{link.name}</Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      <ul
+        tabIndex={0}
+        className="px-2 md:px-0 py-3 space-y-2 md:space-y-0 md:space-x-2 font-medium text-slate-700"
+      >
+        {links.map((link) => (
+          <li key={link.name} className="md:inline-block px-6 py-4 rounded-md text-white focus:outline-none focus:text-white focus:bg-gray-700 ">
+            <Link to={link.href} className={`${link.selected ? "relative  w-fit block after:block after:content-[''] after:absolute after:h-[3px] after:bg-white after:w-full after:scale-x-100 after:transition after:duration-300 after:origin-right" : ""}`}>{link.name}</Link>
+          </li>
+        ))}
+        <Link to="/register">
+          <button className="bg-[#6cc4ff] text-[#0b3855] active:bg-pink-600 font-bold text-base px-8 py-4 rounded-lg shadow-md hover:shadow-lg outline-none focus:outline-none mr-1 mb-1 mt-1 ease-linear transition-all duration-150" type="button">
+            Déconnexion
+          </button>
+        </Link>
+      </ul>
     </>
   );
 };
