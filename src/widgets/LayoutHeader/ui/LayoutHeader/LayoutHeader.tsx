@@ -2,9 +2,24 @@ import { FC } from "react";
 import React, { useState } from 'react';
 import { Logo } from "@/widgets";
 import Menu from "../Menu/Menu";
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useSharedData } from '../../../../context/StateContext'
 
 const LayoutHeader: FC = () => {
+  const { isLoggedIn, setIsLoggedIn } = useSharedData();
+  const navigate = useNavigate();
+  const handleLogInOut = () => {
+    if (isLoggedIn) {
+        localStorage.removeItem('user')
+        setIsLoggedIn(false)
+        navigate('/')
+    } else {
+        // handleLoginClick()
+    }
+}
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  
+    const location = useLocation();
   return (
     <>
       <header>
@@ -56,46 +71,49 @@ const LayoutHeader: FC = () => {
           </div>
         </nav> */}
         <nav className="bg-[#0b3855] border-b-2 border-white">
-        <div className="max-w-7xl mx-auto flex items-center justify-between h-24 px-4 border-b border-solid border-slate-600">
-        <div className="flex-shrink-0 font-bold tracking-wider text-3xl text-white">
-          KibaroCert
-        </div>
-        <div className="hidden md:block">
-        <Menu
-            links={[
-              { name: "Accueil", href: "/", selected: true },
-              { name: "Digitaliser", href: "/portfolio", selected: false },
-              { name: "Vérifier", href: "/about", selected: false },
-              // { name: "Se déconnecter", href: "/about", selected: false },
-            ]}
-          />
-        </div>
-        <button
-          type="button"
-          className="md:hidden bg-gray-900 inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:bg-gray-700 focus:text-white transition duration-150 ease-in-out"
-          onClick={() => setShowMobileMenu(!showMobileMenu)}>
-          <svg
-            className="h-6 w-6"
-            stroke="currentColor"
-            fill="none"
-            viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M4 6h16M4 12h16M4 18h16"
-            ></path>
-          </svg>
-        </button>
-      </div>
-      {showMobileMenu && <Menu
+          <div className="max-w-7xl mx-auto flex items-center justify-between h-24 px-4 border-b border-solid border-slate-600">
+            <div className="flex-shrink-0 font-bold tracking-wider text-3xl text-white">
+              <Link to="/">
+                KibaroCert
+              </Link>
+            </div>
+            <div className="hidden md:block">
+              <Menu
+                links={[
+                  { name: "Accueil", href: "/", selected: true },
+                  { name: "Digitaliser", href: "/digitaliser", selected: false },
+                  { name: "Référence", href: "/reference", selected: false },
+                  { name: "Vérifier", href: "/verifier", selected: false },
+                  // { name: "Se déconnecter", href: "/about", selected: false },
+                ]}
+              />
+            </div>
+            <button
+              type="button"
+              className="md:hidden bg-gray-900 inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:bg-gray-700 focus:text-white transition duration-150 ease-in-out"
+              onClick={() => setShowMobileMenu(!showMobileMenu)}>
+              <svg
+                className="h-6 w-6"
+                stroke="currentColor"
+                fill="none"
+                viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 6h16M4 12h16M4 18h16"
+                ></path>
+              </svg>
+            </button>
+          </div>
+          {showMobileMenu && <Menu
             links={[
               { name: "Se connecter", href: "/", selected: false },
               { name: "S'enregistrer", href: "/portfolio", selected: false },
               // { name: "About", href: "/about" },
             ]}
           />}
-    </nav>
+        </nav>
       </header>
     </>
   );
