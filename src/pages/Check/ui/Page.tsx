@@ -1,15 +1,15 @@
 import { FC, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import ReferenceService from "../../../services/referenceApi"
 import DiplomeService from "../../../services/diplomeApi"
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from "react-toastify";
 import 'react-toastify/dist/ReactToastify.css';
 import { useSharedData } from '../../../context/StateContext';
 
 const Check: FC = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
-    const { setSharedData, } = useSharedData();
+    const { setSharedData } = useSharedData();
     const [ selected, setSelected ] = useState('');
     function handleChange(e) {
         setSelected(e.target.value);
@@ -24,21 +24,21 @@ const Check: FC = () => {
         e.preventDefault();
         setLoading(true);
 
-        var data = {
+        const data = {
             id: e.target.hash.value
         }
 
         try {
             let resp;
-            if(selected && selected == "ref"){
+            if (selected === "ref") {
                 resp = await ReferenceService.SearchReference(data.id)
-                if (resp.status == 200) {
+                if (resp.status === 200) {
                     setSharedData(resp.data);
                     navigate("/verifier-success");
                 }
             }else{
                 resp = await DiplomeService.SearchDiplome(data.id)
-                if (resp.status == 200) {
+                if (resp.status === 200) {
                     setSharedData(resp.data);
                     navigate("/verif-dip-success");
                 }
