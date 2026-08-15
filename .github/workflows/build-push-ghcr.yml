@@ -6,13 +6,16 @@ on:
       - dev
       - main
 
-  push:
+  workflow_run:
+    workflows:
+      - Security SAST and DAST
+    types:
+      - completed
     branches:
       - main
 
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
@@ -21,14 +24,27 @@ env:
 jobs:
   validate:
     name: Validate frontend
+    if: >-
+      github.event_name == 'pull_request' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: npm
@@ -37,64 +53,53 @@ jobs:
         run: npm ci
 
       - name: TypeScript verification
-        run: npx tsc --noEmit
+        run: npm exec -- tsc --noEmit
 
       - name: Build frontend
         run: npm run build
 
-  container:
-    name: Build and publish container
+  pull-request-container:
+    name: Build and test Pull Request container
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    needs: validate
+    needs:
+      - validate
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build Pull Request image
-        if: github.event_name == 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           load: true
           push: false
           tags: kibarocert-frontend:pr-test
 
-      - name: Smoke test /healthz
-        if: github.event_name == 'pull_request'
+      - name: Start smoke test container
         run: |
-          docker run -d --rm \
+          docker run --detach \
             --name frontend-smoke \
-            -p 8080:8080 \
+            --publish 8080:8080 \
             kibarocert-frontend:pr-test
 
-          for i in {1..15}; do
-            if curl --fail --silent http://localhost:8080/healthz; then
+      - name: Smoke test /healthz
+        run: |
+          for attempt in {1..15}; do
+            if curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null; then
               echo "Health check successful"
               exit 0
             fi
 
-            echo "Waiting for the frontend container..."
+            echo "Waiting for the frontend container (${attempt}/15)"
             sleep 2
           done
 
@@ -102,9 +107,61 @@ jobs:
           docker logs frontend-smoke
           exit 1
 
-      - name: Build and publish main image
-        if: github.event_name == 'push'
-        uses: docker/build-push-action@v6
+      - name: Show container logs after a failure
+        if: failure()
+        run: docker logs frontend-smoke || true
+
+      - name: Clean up smoke test container
+        if: always()
+        run: docker rm --force frontend-smoke 2>/dev/null || true
+
+  publish-ghcr:
+    name: Publish validated image to GHCR
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    needs:
+      - validate
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout validated source code # nosemgrep
+        # Security justification:
+        # - the triggering workflow completed successfully;
+        # - it was triggered by a push on main;
+        # - it originated from this repository;
+        # - the exact validated SHA is checked out.
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
+            type=raw,value=latest
+
+      - name: Build and publish validated image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           push: true
