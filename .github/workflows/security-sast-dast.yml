@@ -74,8 +74,41 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Cette étape est temporairement nécessaire pour la PR qui raccorde
+      # les historiques indépendants des branches main et dev.
+      #
+      # Le premier commit de dev est un commit racine sans parent.
+      # Gitleaks essaie normalement d'analyser :
+      #
+      # premier_commit^..HEAD
+      #
+      # Cette plage est invalide, car premier_commit^ n'existe pas.
+      # Nous utilisons donc le deuxième commit comme BASE_REF.
+      # Son parent étant le commit racine, tout l'historique reste analysé.
+      - name: Configure Gitleaks base for history alignment
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.head_ref == 'fix/align-main-with-dev'
+        shell: bash
+        run: |
+          SECOND_COMMIT="$(
+            git rev-list \
+              --reverse \
+              --first-parent \
+              "${{ github.event.pull_request.head.sha }}" |
+            sed -n '2p'
+          )"
+
+          if [ -z "$SECOND_COMMIT" ]; then
+            echo "Unable to determine the second commit of the PR branch"
+            exit 1
+          fi
+
+          echo "Temporary Gitleaks BASE_REF: $SECOND_COMMIT"
+          echo "BASE_REF=$SECOND_COMMIT" >> "$GITHUB_ENV"
+
       - name: Detect hardcoded secrets
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -139,7 +172,8 @@ jobs:
       - name: Wait for application health endpoint
         run: |
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null; then
+            if curl --fail --silent \
+              http://127.0.0.1:8080/healthz >/dev/null; then
               echo "Application is ready"
               exit 0
             fi
@@ -183,5 +217,8 @@ jobs:
       - name: Clean up test containers and network
         if: always()
         run: |
-          docker rm --force kibarocert-security-test 2>/dev/null || true
-          docker network rm security-test-network 2>/dev/null || true
+          docker rm --force \
+            kibarocert-security-test 2>/dev/null || true
+
+          docker network rm \
+            security-test-network 2>/dev/null || true
