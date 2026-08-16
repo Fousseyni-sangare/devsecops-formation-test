@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kibarocert-frontend
+  namespace: argocd
+
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+  labels:
+    app.kubernetes.io/name: kibarocert-frontend
+    app.kubernetes.io/component: gitops
+    app.kubernetes.io/part-of: kibarocert-platform
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/yiriah/KibaroCert-Front.git
+
+    # La branche main contient l’état validé et déployable.
+    targetRevision: main
+
+    path: k8s
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kibarocert
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

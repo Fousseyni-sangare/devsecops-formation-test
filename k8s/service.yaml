@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibarocert-frontend
+  namespace: kibarocert
+  labels:
+    app.kubernetes.io/name: kibarocert-frontend
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: kibarocert-platform
+spec:
+  type: ClusterIP
+
+  selector:
+    app.kubernetes.io/name: kibarocert-frontend
+
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
