@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibarocert-frontend
+  namespace: kibarocert
+  labels:
+    app.kubernetes.io/name: kibarocert-frontend
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: kibarocert-platform
+spec:
+  replicas: 2
+
+  revisionHistoryLimit: 3
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kibarocert-frontend
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kibarocert-frontend
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: kibarocert-platform
+
+    spec:
+      serviceAccountName: kibarocert-frontend
+      automountServiceAccountToken: false
+
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: frontend
+
+          # Première étape GitOps :
+          # utilisation du tag SHA correspondant au commit publié dans GHCR.
+          image: ghcr.io/yiriah/kibarocert-frontend:sha-e92c989bac189a743586816dfb347c6411b9cc37
+
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              scheme: HTTP
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          volumeMounts:
+            - name: nginx-tmp
+              mountPath: /tmp
+
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+
+      volumes:
+        - name: nginx-tmp
+          emptyDir:
+            sizeLimit: 32Mi
+
+        - name: nginx-cache
+          emptyDir:
+            sizeLimit: 32Mi
+
+      terminationGracePeriodSeconds: 30
