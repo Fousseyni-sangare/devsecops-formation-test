@@ -74,10 +74,49 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Prepare root commit for Gitleaks pull request scan
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}"; then
+            echo "The pull request base commit is unavailable: ${BASE_SHA}"
+            exit 1
+          fi
+
+          if git rev-parse --verify "${BASE_SHA}^" >/dev/null 2>&1; then
+            echo "The pull request base commit already has a parent."
+            exit 0
+          fi
+
+          echo "The pull request base commit is a root commit."
+          echo "Creating a temporary parent for the Gitleaks commit range."
+
+          EMPTY_TREE="$(
+            git mktree </dev/null
+          )"
+
+          EMPTY_COMMIT="$(
+            printf '%s\n' \
+              'Temporary parent for Gitleaks root commit scan' |
+            git \
+              -c user.name='GitHub Actions' \
+              -c user.email='github-actions@users.noreply.github.com' \
+              commit-tree "${EMPTY_TREE}"
+          )"
+
+          git replace --graft "${BASE_SHA}" "${EMPTY_COMMIT}"
+
+          git rev-parse --verify "${BASE_SHA}^"
+
       - name: Detect hardcoded secrets
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
 
   trivy-filesystem:
     name: Trivy filesystem and IaC scan
@@ -139,7 +178,8 @@ jobs:
       - name: Wait for application health endpoint
         run: |
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null; then
+            if curl --fail --silent \
+              http://127.0.0.1:8080/healthz >/dev/null; then
               echo "Application is ready"
               exit 0
             fi
@@ -183,5 +223,8 @@ jobs:
       - name: Clean up test containers and network
         if: always()
         run: |
-          docker rm --force kibarocert-security-test 2>/dev/null || true
-          docker network rm security-test-network 2>/dev/null || true
+          docker rm --force \
+            kibarocert-security-test 2>/dev/null || true
+
+          docker network rm \
+            security-test-network 2>/dev/null || true
