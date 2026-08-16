@@ -16,7 +16,7 @@ spec:
   project: default
 
   source:
-    repoURL: https://github.com/yiriah/KibaroCert-Front.git
+    repoURL: git@github.com:yiriah/KibaroCert-Front.git
 
     # La branche main contient l’état validé et déployable.
     targetRevision: main
