@@ -1,0 +1,224 @@
+name: Security SAST and DAST
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - ci-cd
+      - main
+
+  push:
+    branches:
+      - dev
+      - ci-cd
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TEST_IMAGE: kibarocert-frontend:security-${{ github.sha }}
+
+jobs:
+  semgrep-sast:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Semgrep
+        run: python3 -m pip install --disable-pip-version-check semgrep
+
+      - name: Analyze source code
+        run: semgrep scan --config auto --error .
+
+  dependency-audit:
+    name: NPM dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies reproducibly
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit build dependencies
+        run: npm audit --audit-level=critical
+
+  gitleaks:
+    name: Gitleaks secret detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout complete Git history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      # Cette étape est temporairement nécessaire pour la PR qui raccorde
+      # les historiques indépendants des branches main et dev.
+      #
+      # Le premier commit de dev est un commit racine sans parent.
+      # Gitleaks essaie normalement d'analyser :
+      #
+      # premier_commit^..HEAD
+      #
+      # Cette plage est invalide, car premier_commit^ n'existe pas.
+      # Nous utilisons donc le deuxième commit comme BASE_REF.
+      # Son parent étant le commit racine, tout l'historique reste analysé.
+      - name: Configure Gitleaks base for history alignment
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.head_ref == 'fix/align-main-with-dev'
+        shell: bash
+        run: |
+          SECOND_COMMIT="$(
+            git rev-list \
+              --reverse \
+              --first-parent \
+              "${{ github.event.pull_request.head.sha }}" |
+            sed -n '2p'
+          )"
+
+          if [ -z "$SECOND_COMMIT" ]; then
+            echo "Unable to determine the second commit of the PR branch"
+            exit 1
+          fi
+
+          echo "Temporary Gitleaks BASE_REF: $SECOND_COMMIT"
+          echo "BASE_REF=$SECOND_COMMIT" >> "$GITHUB_ENV"
+
+      - name: Detect hardcoded secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy-filesystem:
+    name: Trivy filesystem and IaC scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Scan dependencies and configuration
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+  container-security-and-dast:
+    name: Build, image scan and OWASP ZAP DAST
+    runs-on: ubuntu-latest
+    needs:
+      - semgrep-sast
+      - dependency-audit
+      - gitleaks
+      - trivy-filesystem
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build test image
+        run: docker build --tag "$TEST_IMAGE" .
+
+      - name: Scan the final Docker image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.TEST_IMAGE }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Create isolated test network
+        run: docker network create security-test-network
+
+      - name: Start application container
+        run: |
+          docker run --detach \
+            --name kibarocert-security-test \
+            --network security-test-network \
+            --publish 8080:8080 \
+            "$TEST_IMAGE"
+
+      - name: Wait for application health endpoint
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent \
+              http://127.0.0.1:8080/healthz >/dev/null; then
+              echo "Application is ready"
+              exit 0
+            fi
+
+            echo "Waiting for application (${attempt}/30)"
+            sleep 2
+          done
+
+          docker logs kibarocert-security-test
+          exit 1
+
+      - name: Run OWASP ZAP baseline scan
+        run: |
+          docker run --rm \
+            --network security-test-network \
+            --volume "${{ github.workspace }}:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://kibarocert-security-test:8080 \
+            -r zap-baseline-report.html \
+            -J zap-baseline-report.json \
+            -w zap-baseline-report.md \
+            -I
+
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zap-baseline-reports-${{ github.sha }}
+          path: |
+            zap-baseline-report.html
+            zap-baseline-report.json
+            zap-baseline-report.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Show application logs after a failure
+        if: failure()
+        run: docker logs kibarocert-security-test || true
+
+      - name: Clean up test containers and network
+        if: always()
+        run: |
+          docker rm --force \
+            kibarocert-security-test 2>/dev/null || true
+
+          docker network rm \
+            security-test-network 2>/dev/null || true

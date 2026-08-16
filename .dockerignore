@@ -1,0 +1,14 @@
+﻿node_modules
+dist
+build
+coverage
+.git
+.github
+.vscode
+.env
+.env.*
+*.log
+Dockerfile*
+README.md
+k8s
+argocd
