@@ -18,10 +18,11 @@ spec:
   source:
     repoURL: git@github.com:yiriah/KibaroCert-Front.git
 
-    # La branche main contient l’état validé et déployable.
+    # La branche main contient l'etat valide et deployable.
     targetRevision: main
 
-    path: k8s
+    # Environnement local actuellement deploye sur Minikube.
+    path: k8s/overlays/local
 
   destination:
     server: https://kubernetes.default.svc

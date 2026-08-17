@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kibarocert-staging
+  labels:
+    app.kubernetes.io/name: kibarocert-staging
+    app.kubernetes.io/part-of: kibarocert-platform
+    app.kubernetes.io/environment: staging
+
+    # Application du standard Pod Security "restricted".
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
