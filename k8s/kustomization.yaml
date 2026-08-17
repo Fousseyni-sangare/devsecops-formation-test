@@ -1,14 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Point de compatibilite temporaire pour l'application Argo CD existante.
+# Argo CD surveille actuellement le chemin "k8s".
 resources:
-  - namespace.yaml
-  - serviceaccount.yaml
-  - deployment.yaml
-  - service.yaml
-  - networkpolicy.yaml
-
-labels:
-  - pairs:
-      app.kubernetes.io/part-of: kibarocert
-    includeSelectors: true
+  - overlays/local

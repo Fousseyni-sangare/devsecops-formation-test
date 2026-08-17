@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kibarocert-frontend
-  namespace: kibarocert
   labels:
     app.kubernetes.io/name: kibarocert-frontend
     app.kubernetes.io/component: frontend
@@ -41,8 +40,6 @@ spec:
       containers:
         - name: frontend
 
-          # Première étape GitOps :
-          # utilisation du tag SHA correspondant au commit publié dans GHCR.
           image: ghcr.io/yiriah/kibarocert-frontend:sha-e92c989bac189a743586816dfb347c6411b9cc37
 
           imagePullPolicy: IfNotPresent
