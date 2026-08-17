@@ -6,12 +6,46 @@ on:
       - dev
       - ci-cd
       - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "types/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "nginx.conf"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "tsconfig.node.json"
+      - "vite.config.ts"
+      - "tailwind.config.js"
+      - "postcss.config.js"
+      - ".eslintrc.cjs"
+      - ".github/workflows/security-sast-dast.yml"
 
   push:
     branches:
       - dev
       - ci-cd
       - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "types/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "nginx.conf"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "tsconfig.node.json"
+      - "vite.config.ts"
+      - "tailwind.config.js"
+      - "postcss.config.js"
+      - ".eslintrc.cjs"
+      - ".github/workflows/security-sast-dast.yml"
 
   workflow_dispatch:
 
@@ -206,7 +240,7 @@ jobs:
 
       - name: Upload ZAP reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@ff98106e4c7b2bc287b24eaf42907196329070c7 # v4
         with:
           name: zap-baseline-reports-${{ github.sha }}
           path: |

@@ -1,0 +1,175 @@
+name: GitOps validation
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - ci-cd
+      - main
+    paths:
+      - "k8s/**"
+      - "argocd/**"
+      - ".github/workflows/gitops-validation.yml"
+
+  push:
+    branches:
+      - dev
+      - ci-cd
+      - main
+    paths:
+      - "k8s/**"
+      - "argocd/**"
+      - ".github/workflows/gitops-validation.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: gitops-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-kustomize:
+    name: Validate Kustomize environments
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Show kubectl client version
+        run: kubectl version --client
+
+      - name: Render Kubernetes base
+        run: kubectl kustomize k8s/base > "${RUNNER_TEMP}/base.yaml"
+
+      - name: Ensure the base has no fixed namespace
+        run: |
+          if grep --quiet --extended-regexp \
+            '^[[:space:]]+namespace:' \
+            "${RUNNER_TEMP}/base.yaml"; then
+            echo "The Kubernetes base contains a fixed namespace."
+            exit 1
+          fi
+
+          echo "The Kubernetes base is namespace-independent."
+
+      - name: Render local overlay
+        run: |
+          kubectl kustomize k8s/overlays/local \
+            > "${RUNNER_TEMP}/local.yaml"
+
+      - name: Verify local namespace
+        run: |
+          grep --quiet \
+            'namespace: kibarocert' \
+            "${RUNNER_TEMP}/local.yaml"
+
+      - name: Render staging overlay
+        run: |
+          kubectl kustomize k8s/overlays/staging \
+            > "${RUNNER_TEMP}/staging.yaml"
+
+      - name: Verify staging namespace
+        run: |
+          grep --quiet \
+            'namespace: kibarocert-staging' \
+            "${RUNNER_TEMP}/staging.yaml"
+
+      - name: Render production overlay
+        run: |
+          kubectl kustomize k8s/overlays/production \
+            > "${RUNNER_TEMP}/production.yaml"
+
+      - name: Verify production namespace
+        run: |
+          grep --quiet \
+            'namespace: kibarocert-production' \
+            "${RUNNER_TEMP}/production.yaml"
+
+      - name: Validate temporary compatibility path
+        run: kubectl kustomize k8s > "${RUNNER_TEMP}/compatibility.yaml"
+
+      - name: Display validated environments
+        run: |
+          echo "Validated Kustomize targets:"
+          echo "- k8s/base"
+          echo "- k8s/overlays/local"
+          echo "- k8s/overlays/staging"
+          echo "- k8s/overlays/production"
+          echo "- k8s compatibility path"
+
+  gitleaks-gitops:
+    name: Gitleaks GitOps secret detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout complete Git history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Prepare root commit for Gitleaks pull request scan
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}"; then
+            echo "The pull request base commit is unavailable: ${BASE_SHA}"
+            exit 1
+          fi
+
+          if git rev-parse --verify "${BASE_SHA}^" >/dev/null 2>&1; then
+            echo "The pull request base commit already has a parent."
+            exit 0
+          fi
+
+          echo "The pull request base commit is a root commit."
+          echo "Creating a temporary parent for the Gitleaks commit range."
+
+          EMPTY_TREE="$(
+            git mktree </dev/null
+          )"
+
+          EMPTY_COMMIT="$(
+            printf '%s\n' \
+              'Temporary parent for Gitleaks root commit scan' |
+            git \
+              -c user.name='GitHub Actions' \
+              -c user.email='github-actions@users.noreply.github.com' \
+              commit-tree "${EMPTY_TREE}"
+          )"
+
+          git replace --graft "${BASE_SHA}" "${EMPTY_COMMIT}"
+
+          git rev-parse --verify "${BASE_SHA}^"
+
+      - name: Detect hardcoded secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  trivy-gitops:
+    name: Trivy Kubernetes and IaC scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Scan Kubernetes and GitOps configuration
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: misconfig
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
