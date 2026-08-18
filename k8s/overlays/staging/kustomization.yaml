@@ -10,4 +10,4 @@ resources:
 images:
   - name: ghcr.io/yiriah/kibarocert-frontend
     newName: ghcr.io/yiriah/kibarocert-frontend
-    digest: sha256:0f6a9ea72f2a5fbe82aa339e4697a77a903b701e37cee9c67ecca679b6616d0d
+    digest: sha256:ceea3ace9f0e53fe3a7a59dfe2fdda04646f8c44d1f09187c473946bfbaaf731
