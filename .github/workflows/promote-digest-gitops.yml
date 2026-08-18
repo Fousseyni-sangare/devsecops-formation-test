@@ -104,19 +104,39 @@ jobs:
           IMAGE_REFERENCE="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
           DIGEST=""
 
-          for attempt in {1..12}; do
-            DIGEST="$(
-              docker buildx imagetools inspect "${IMAGE_REFERENCE}" 2>/dev/null |
-              awk '$1 == "Digest:" {print $2; exit}'
-            )"
+          echo "Resolving digest for:"
+          echo "${IMAGE_REFERENCE}"
 
-            if [[ "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-              break
+          for attempt in {1..12}; do
+            INSPECT_OUTPUT=""
+
+            if INSPECT_OUTPUT="$(
+              docker buildx imagetools inspect \
+                "${IMAGE_REFERENCE}" 2>&1
+            )"; then
+              DIGEST="$(
+                printf '%s\n' "${INSPECT_OUTPUT}" |
+                  awk '$1 == "Digest:" {print $2; exit}'
+              )"
+
+              if [[ "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                echo "Digest resolved successfully."
+                break
+              fi
+
+              echo "The image was found, but no valid digest was returned."
+              printf '%s\n' "${INSPECT_OUTPUT}"
+            else
+              echo "Inspection failed on attempt ${attempt}/12:"
+              printf '%s\n' "${INSPECT_OUTPUT}"
             fi
 
-            echo "Waiting for ${IMAGE_REFERENCE} to become available (${attempt}/12)"
             DIGEST=""
-            sleep 5
+
+            if [[ "${attempt}" -lt 12 ]]; then
+              echo "Retrying in 5 seconds..."
+              sleep 5
+            fi
           done
 
           if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
@@ -124,11 +144,13 @@ jobs:
             exit 1
           fi
 
-          echo "reference=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "${GITHUB_OUTPUT}"
+          IMMUTABLE_REFERENCE="${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+
+          echo "reference=${IMMUTABLE_REFERENCE}" >> "${GITHUB_OUTPUT}"
           echo "digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
 
           echo "Resolved immutable image:"
-          echo "${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+          echo "${IMMUTABLE_REFERENCE}"
 
       - name: Pin staging overlay to the immutable digest
         shell: bash
