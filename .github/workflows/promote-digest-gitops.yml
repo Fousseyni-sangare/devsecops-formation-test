@@ -1,0 +1,284 @@
+name: Promote validated image digest to staging
+
+on:
+  workflow_run:
+    workflows:
+      - Build and publish frontend image
+    types:
+      - completed
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Full Git commit SHA whose image must be promoted"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-staging
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/kibarocert-frontend
+  STAGING_KUSTOMIZATION: k8s/overlays/staging/kustomization.yaml
+
+jobs:
+  promote-staging:
+    name: Open staging digest promotion Pull Request
+    if: >-
+      (
+        github.event_name == 'workflow_dispatch'
+      ) ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'workflow_run' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: read
+      pull-requests: write
+
+    steps:
+      - name: Determine validated source SHA
+        id: source
+        shell: bash
+        env:
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          MANUAL_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            SOURCE_SHA="${MANUAL_SOURCE_SHA}"
+          else
+            SOURCE_SHA="${WORKFLOW_RUN_SHA}"
+          fi
+
+          if [[ ! "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid source SHA: ${SOURCE_SHA}"
+            exit 1
+          fi
+
+          SHORT_SHA="${SOURCE_SHA:0:12}"
+          IMAGE_TAG="sha-${SOURCE_SHA}"
+
+          echo "sha=${SOURCE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "image_tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout current GitOps state
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve immutable image digest
+        id: image
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.source.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_REFERENCE="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+          DIGEST=""
+
+          for attempt in {1..12}; do
+            DIGEST="$(
+              docker buildx imagetools inspect "${IMAGE_REFERENCE}" 2>/dev/null |
+              awk '$1 == "Digest:" {print $2; exit}'
+            )"
+
+            if [[ "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              break
+            fi
+
+            echo "Waiting for ${IMAGE_REFERENCE} to become available (${attempt}/12)"
+            DIGEST=""
+            sleep 5
+          done
+
+          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Unable to resolve a valid digest for ${IMAGE_REFERENCE}"
+            exit 1
+          fi
+
+          echo "reference=${REGISTRY}/${IMAGE_NAME}@${DIGEST}" >> "${GITHUB_OUTPUT}"
+          echo "digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+
+          echo "Resolved immutable image:"
+          echo "${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+
+      - name: Pin staging overlay to the immutable digest
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          python3 - "${STAGING_KUSTOMIZATION}" "${IMAGE_DIGEST}" <<'PYTHON'
+          import re
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          digest = sys.argv[2]
+          content = path.read_text(encoding="utf-8")
+
+          if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+              raise SystemExit(f"Invalid digest: {digest}")
+
+          image_name = "ghcr.io/yiriah/kibarocert-frontend"
+
+          if f"name: {image_name}" not in content:
+              raise SystemExit(
+                  f"The staging image entry is missing from {path}"
+              )
+
+          pattern = re.compile(
+              r"(?m)^(\s+)(?:newTag|digest):\s*\S+\s*$"
+          )
+
+          updated, count = pattern.subn(
+              lambda match: f"{match.group(1)}digest: {digest}",
+              content,
+              count=1,
+          )
+
+          if count != 1:
+              raise SystemExit(
+                  "Expected exactly one newTag or digest field "
+                  "in the staging image entry"
+              )
+
+          path.write_text(updated, encoding="utf-8")
+          PYTHON
+
+      - name: Validate staging Kustomize rendering
+        shell: bash
+        env:
+          EXPECTED_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          kubectl kustomize k8s/overlays/staging \
+            > "${RUNNER_TEMP}/staging.yaml"
+
+          EXPECTED_IMAGE="${REGISTRY}/${IMAGE_NAME}@${EXPECTED_DIGEST}"
+
+          if ! grep --fixed-strings --quiet \
+            "image: ${EXPECTED_IMAGE}" \
+            "${RUNNER_TEMP}/staging.yaml"; then
+            echo "The rendered staging manifest does not use:"
+            echo "${EXPECTED_IMAGE}"
+            exit 1
+          fi
+
+          echo "Staging manifest uses the expected immutable digest."
+
+      - name: Detect an already promoted digest
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- "${STAGING_KUSTOMIZATION}"; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "The staging overlay already references this digest."
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            git diff -- "${STAGING_KUSTOMIZATION}"
+          fi
+
+      - name: Create promotion branch and commit
+        if: steps.changes.outputs.changed == 'true'
+        id: commit
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SHORT_SHA: ${{ steps.source.outputs.short_sha }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          BRANCH="gitops/promote-staging-${SHORT_SHA}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git switch --create "${BRANCH}"
+          git add "${STAGING_KUSTOMIZATION}"
+
+          git commit \
+            -m "chore(gitops): promote ${SHORT_SHA} to staging"
+
+          git push --set-upstream origin "${BRANCH}"
+
+          echo "branch=${BRANCH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Open atomic GitOps Pull Request
+        if: steps.changes.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTION_BRANCH: ${{ steps.commit.outputs.branch }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          IMAGE_REFERENCE: ${{ steps.image.outputs.reference }}
+        run: |
+          set -euo pipefail
+
+          EXISTING_PR="$(
+            gh pr list \
+              --base main \
+              --head "${PROMOTION_BRANCH}" \
+              --state open \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          if [[ -n "${EXISTING_PR}" ]]; then
+            echo "Pull Request #${EXISTING_PR} already exists."
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "${PROMOTION_BRANCH}" \
+            --title "chore(gitops): promote ${SOURCE_SHA:0:12} to staging" \
+            --body "$(cat <<EOF
+          ## Staging image promotion
+
+          This automated and atomic Pull Request promotes the validated frontend image to staging.
+
+          - Source commit: \`${SOURCE_SHA}\`
+          - Immutable image: \`${IMAGE_REFERENCE}\`
+          - Target environment: \`staging\`
+          - Modified file: \`${STAGING_KUSTOMIZATION}\`
+
+          The application image was built and published only after the security workflow succeeded.
+
+          Merging this Pull Request changes the declared GitOps staging state. Argo CD remains responsible for deployment.
+          EOF
+          )"

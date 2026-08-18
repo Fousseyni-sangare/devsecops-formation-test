@@ -6,3 +6,8 @@ namespace: kibarocert-staging
 resources:
   - namespace.yaml
   - ../../base
+
+images:
+  - name: ghcr.io/yiriah/kibarocert-frontend
+    newName: ghcr.io/yiriah/kibarocert-frontend
+    newTag: sha-e92c989bac189a743586816dfb347c6411b9cc37
