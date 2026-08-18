@@ -6,3 +6,6 @@ namespace: kibarocert
 resources:
   - namespace.yaml
   - ../../base
+
+generators:
+  - secret-generator.yaml

@@ -9,6 +9,7 @@ on:
     paths:
       - "k8s/**"
       - "argocd/**"
+      - ".sops.yaml"
       - ".github/workflows/gitops-validation.yml"
 
   push:
@@ -19,6 +20,7 @@ on:
     paths:
       - "k8s/**"
       - "argocd/**"
+      - ".sops.yaml"
       - ".github/workflows/gitops-validation.yml"
 
   workflow_dispatch:
@@ -48,6 +50,8 @@ jobs:
 
       - name: Ensure the base has no fixed namespace
         run: |
+          set -euo pipefail
+
           if grep --quiet --extended-regexp \
             '^[[:space:]]+namespace:' \
             "${RUNNER_TEMP}/base.yaml"; then
@@ -57,9 +61,86 @@ jobs:
 
           echo "The Kubernetes base is namespace-independent."
 
-      - name: Render local overlay
+      - name: Verify SOPS encrypted secret policy
         run: |
-          kubectl kustomize k8s/overlays/local \
+          set -euo pipefail
+
+          ENCRYPTED_SECRET="k8s/overlays/local/secrets/kibarocert-frontend-secret.sops.yaml"
+          GENERATOR="k8s/overlays/local/secret-generator.yaml"
+
+          test -f ".sops.yaml"
+          test -f "${ENCRYPTED_SECRET}"
+          test -f "${GENERATOR}"
+
+          # Assemble the private-key prefix at runtime so this workflow
+          # does not detect its own source code as a leaked private key.
+          PRIVATE_KEY_PREFIX='AGE-SECRET'"-KEY-"
+
+          if grep --recursive \
+            --line-number \
+            --fixed-strings \
+            --exclude-dir=.git \
+            "${PRIVATE_KEY_PREFIX}" .; then
+            echo "A private Age key was detected in the repository."
+            exit 1
+          fi
+
+          grep --quiet \
+            --fixed-strings \
+            "ENC[AES256_GCM" \
+            "${ENCRYPTED_SECRET}"
+
+          grep --quiet \
+            --extended-regexp \
+            '^[[:space:]]*sops:' \
+            "${ENCRYPTED_SECRET}"
+
+          grep --quiet \
+            --extended-regexp \
+            'recipient:[[:space:]]+age1' \
+            "${ENCRYPTED_SECRET}"
+
+          grep --quiet \
+            --fixed-strings \
+            "./secrets/kibarocert-frontend-secret.sops.yaml" \
+            "${GENERATOR}"
+
+          echo "The local Secret is protected by SOPS and references an Age recipient."
+          echo "No private Age key is present in the repository."
+
+      - name: Prepare local overlay without secret decryption
+        run: |
+          set -euo pipefail
+
+          cp --recursive k8s "${RUNNER_TEMP}/k8s"
+
+          awk '
+            BEGIN {
+              skip_generators = 0
+            }
+
+            /^generators:/ {
+              skip_generators = 1
+              next
+            }
+
+            skip_generators && /^[^[:space:]]/ {
+              skip_generators = 0
+            }
+
+            !skip_generators {
+              print
+            }
+          ' \
+            k8s/overlays/local/kustomization.yaml \
+            > "${RUNNER_TEMP}/k8s/overlays/local/kustomization.yaml"
+
+      - name: Render local overlay without decrypting secrets
+        run: |
+          set -euo pipefail
+
+          kubectl kustomize \
+            "${RUNNER_TEMP}/k8s/overlays/local" \
             > "${RUNNER_TEMP}/local.yaml"
 
       - name: Verify local namespace
@@ -91,16 +172,19 @@ jobs:
             "${RUNNER_TEMP}/production.yaml"
 
       - name: Validate temporary compatibility path
-        run: kubectl kustomize k8s > "${RUNNER_TEMP}/compatibility.yaml"
+        run: |
+          kubectl kustomize "${RUNNER_TEMP}/k8s" \
+            > "${RUNNER_TEMP}/compatibility.yaml"
 
       - name: Display validated environments
         run: |
           echo "Validated Kustomize targets:"
           echo "- k8s/base"
-          echo "- k8s/overlays/local"
+          echo "- k8s/overlays/local without CI decryption"
           echo "- k8s/overlays/staging"
           echo "- k8s/overlays/production"
           echo "- k8s compatibility path"
+          echo "- SOPS encrypted local Secret policy"
 
   gitleaks-gitops:
     name: Gitleaks GitOps secret detection
