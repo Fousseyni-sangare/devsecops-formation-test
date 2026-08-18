@@ -111,7 +111,8 @@ jobs:
       - name: Smoke test /healthz
         run: |
           for attempt in {1..15}; do
-            if curl --fail --silent http://127.0.0.1:8080/healthz >/dev/null; then
+            if curl --fail --silent \
+              http://127.0.0.1:8080/healthz >/dev/null; then
               echo "Health check successful"
               exit 0
             fi
@@ -133,7 +134,7 @@ jobs:
         run: docker rm --force frontend-smoke 2>/dev/null || true
 
   publish-ghcr:
-    name: Publish validated image to GHCR
+    name: Publish and sign validated image
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
@@ -143,9 +144,11 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - validate
+
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout validated source code # nosemgrep
@@ -178,13 +181,111 @@ jobs:
             type=raw,value=latest
 
       - name: Build and publish validated image
+        id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          provenance: true
+          provenance: mode=max
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Validate published digest
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "The build did not return a valid SHA-256 digest:"
+            echo "${IMAGE_DIGEST}"
+            exit 1
+          fi
+
+          echo "Validated image digest: ${IMAGE_DIGEST}"
+
+      - name: Verify BuildKit SBOM and provenance
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_REFERENCE="${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+
+          echo "Inspecting attestations attached to:"
+          echo "${IMAGE_REFERENCE}"
+
+          SBOM="$(
+            docker buildx imagetools inspect \
+              "${IMAGE_REFERENCE}" \
+              --format '{{json .SBOM}}'
+          )"
+
+          PROVENANCE="$(
+            docker buildx imagetools inspect \
+              "${IMAGE_REFERENCE}" \
+              --format '{{json .Provenance}}'
+          )"
+
+          if [[ -z "${SBOM}" || "${SBOM}" == "null" || "${SBOM}" == "{}" ]]; then
+            echo "No BuildKit SBOM was found for ${IMAGE_REFERENCE}"
+            exit 1
+          fi
+
+          if [[ -z "${PROVENANCE}" ||
+                "${PROVENANCE}" == "null" ||
+                "${PROVENANCE}" == "{}" ]]; then
+            echo "No BuildKit provenance was found for ${IMAGE_REFERENCE}"
+            exit 1
+          fi
+
+          printf '%s\n' "${SBOM}" |
+            jq --exit-status . >/dev/null
+
+          printf '%s\n' "${PROVENANCE}" |
+            jq --exit-status . >/dev/null
+
+          echo "BuildKit SBOM found and valid."
+          echo "BuildKit provenance found and valid."
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign immutable image with GitHub OIDC
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_REFERENCE="${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+
+          cosign sign --yes "${IMAGE_REFERENCE}"
+
+          echo "Signed immutable image:"
+          echo "${IMAGE_REFERENCE}"
+
+      - name: Verify Cosign signature and signer identity
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_REFERENCE="${REGISTRY}/${IMAGE_NAME}@${IMAGE_DIGEST}"
+          EXPECTED_IDENTITY="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/build-push-ghcr.yml@refs/heads/main"
+          EXPECTED_ISSUER="https://token.actions.githubusercontent.com"
+
+          cosign verify \
+            --certificate-identity "${EXPECTED_IDENTITY}" \
+            --certificate-oidc-issuer "${EXPECTED_ISSUER}" \
+            "${IMAGE_REFERENCE}"
+
+          echo "Cosign signature verified."
+          echo "Expected signer: ${EXPECTED_IDENTITY}"
+          echo "Expected OIDC issuer: ${EXPECTED_ISSUER}"

@@ -22,6 +22,7 @@ on:
       - "tailwind.config.js"
       - "postcss.config.js"
       - ".eslintrc.cjs"
+      - ".github/workflows/build-push-ghcr.yml"
       - ".github/workflows/security-sast-dast.yml"
 
   push:
@@ -45,6 +46,7 @@ on:
       - "tailwind.config.js"
       - "postcss.config.js"
       - ".eslintrc.cjs"
+      - ".github/workflows/build-push-ghcr.yml"
       - ".github/workflows/security-sast-dast.yml"
 
   workflow_dispatch:
