@@ -1,0 +1,30 @@
+# Configuration Metrics Server propre au laboratoire Minikube.
+# Le chart et cette configuration seront déployés par Argo CD.
+
+replicas: 1
+
+args:
+  - --cert-dir=/tmp
+  - --secure-port=10250
+  - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+  - --kubelet-use-node-status-port
+  - --metric-resolution=15s
+
+# Exception limitée à Minikube :
+# le certificat TLS du kubelet n'est pas signé par une autorité
+# reconnue par Metrics Server.
+  - --kubelet-insecure-tls
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 100Mi
+  limits:
+    cpu: 200m
+    memory: 250Mi
+
+podDisruptionBudget:
+  enabled: false
+
+serviceMonitor:
+  enabled: false

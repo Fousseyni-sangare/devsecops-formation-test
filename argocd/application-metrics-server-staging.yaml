@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kibarocert-metrics-server-staging
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: kibarocert
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/environment: staging
+spec:
+  project: default
+
+  sources:
+    # Source 1 : chart Helm officiel Metrics Server.
+    - repoURL: https://kubernetes-sigs.github.io/metrics-server/
+      chart: metrics-server
+      targetRevision: 3.14.0
+      helm:
+        releaseName: metrics-server
+        valueFiles:
+          - $values/platform/monitoring/metrics-server/values-staging.yaml
+
+    # Source 2 : valeurs staging versionnées dans le dépôt KibaroCert.
+    - repoURL: git@github.com:yiriah/KibaroCert-Front.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
