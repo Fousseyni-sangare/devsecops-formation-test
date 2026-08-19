@@ -1,0 +1,135 @@
+# Observability stack for the KibaroCert Minikube staging environment.
+
+commonLabels:
+  app.kubernetes.io/part-of: kibarocert
+  app.kubernetes.io/environment: staging
+
+crds:
+  enabled: true
+
+defaultRules:
+  create: true
+  rules:
+    windows: false
+
+# Grafana remains internal. Access will use kubectl port-forward.
+grafana:
+  enabled: true
+  fullnameOverride: kibarocert-grafana
+
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: Europe/Paris
+  defaultDashboardsEditable: false
+
+  ingress:
+    enabled: false
+
+  service:
+    type: ClusterIP
+
+  persistence:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# Alertmanager is enabled without external notification receivers for now.
+alertmanager:
+  enabled: true
+
+  ingress:
+    enabled: false
+
+  service:
+    type: ClusterIP
+
+  alertmanagerSpec:
+    replicas: 1
+    retention: 24h
+
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 192Mi
+
+# Prometheus stores three days of metrics on a 5 Gi persistent volume.
+prometheus:
+  enabled: true
+
+  ingress:
+    enabled: false
+
+  service:
+    type: ClusterIP
+
+  prometheusSpec:
+    replicas: 1
+    retention: 3d
+    retentionSize: 4GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    walCompression: true
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1200Mi
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 5Gi
+
+    # Custom monitors must carry the Helm release label.
+    serviceMonitorSelectorNilUsesHelmValues: true
+    podMonitorSelectorNilUsesHelmValues: true
+    probeSelectorNilUsesHelmValues: true
+    ruleSelectorNilUsesHelmValues: true
+
+# Prometheus Operator manages Prometheus resources and CRDs.
+prometheusOperator:
+  enabled: true
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# Kubernetes object-state metrics.
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi
+
+# Node-level CPU, memory, filesystem and network metrics.
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi
