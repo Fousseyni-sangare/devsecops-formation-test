@@ -1,0 +1,68 @@
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: verify-kibarocert-frontend-signature
+  annotations:
+    policies.kyverno.io/title: Verify KibaroCert frontend signature
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Verifies that the KibaroCert frontend image was signed by the authorized
+      GitHub Actions workflow using Sigstore Cosign keyless signing.
+
+spec:
+  validationActions:
+    - Deny
+
+  failurePolicy: Fail
+
+  evaluation:
+    background:
+      enabled: false
+
+  webhookConfiguration:
+    timeoutSeconds: 15
+
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kibarocert-staging
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+
+  matchImageReferences:
+    - glob: "ghcr.io/yiriah/kibarocert-frontend*"
+
+  credentials:
+    secrets:
+      - ghcr-pull-secret
+
+  attestors:
+    - name: githubActions
+      cosign:
+        keyless:
+          identities:
+            - subject: >-
+                https://github.com/yiriah/KibaroCert-Front/.github/workflows/build-push-ghcr.yml@refs/heads/main
+              issuer: https://token.actions.githubusercontent.com
+        ctlog:
+          url: https://rekor.sigstore.dev
+
+  validations:
+    - expression: >-
+        images.containers.map(
+          image,
+          verifyImageSignatures(image, [attestors.githubActions])
+        ).all(result, result > 0)
+      message: >-
+        Image refused: the KibaroCert frontend must be signed by the authorized
+        GitHub Actions workflow on the main branch.
