@@ -12,6 +12,19 @@ defaultRules:
   rules:
     windows: false
 
+# These control-plane metrics are not directly exposed by the staging cluster.
+# Disabling their monitors prevents permanent DOWN targets and false alerts.
+# Managed Kubernetes services such as GKE commonly expose control-plane
+# observability through the cloud provider.
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
 # Grafana remains internal. Access will use kubectl port-forward.
 grafana:
   enabled: true
