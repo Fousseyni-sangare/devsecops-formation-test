@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-blackbox-exporter-to-kibarocert-frontend
+  namespace: kibarocert-staging
+  labels:
+    app.kubernetes.io/name: kibarocert-frontend
+    app.kubernetes.io/part-of: kibarocert
+    app.kubernetes.io/component: availability-probe-access
+    app.kubernetes.io/environment: staging
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kibarocert-frontend
+      app.kubernetes.io/part-of: kibarocert
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus-blackbox-exporter
+              app.kubernetes.io/instance: blackbox-exporter
+      ports:
+        - protocol: TCP
+          port: 8080

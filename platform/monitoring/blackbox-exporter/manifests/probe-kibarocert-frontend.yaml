@@ -1,0 +1,31 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: kibarocert-frontend-staging-health
+  namespace: monitoring
+  labels:
+    release: monitoring
+    app.kubernetes.io/name: kibarocert-frontend
+    app.kubernetes.io/part-of: kibarocert
+    app.kubernetes.io/component: availability-probe
+    app.kubernetes.io/environment: staging
+spec:
+  jobName: kibarocert-frontend-staging-health
+  interval: 30s
+  scrapeTimeout: 10s
+  module: http_2xx
+
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+    scheme: http
+    path: /probe
+
+  targets:
+    staticConfig:
+      static:
+        - http://kibarocert-frontend.kibarocert-staging.svc.cluster.local/healthz
+      labels:
+        application: kibarocert
+        component: frontend
+        environment: staging
+        monitored_service: kibarocert-frontend
