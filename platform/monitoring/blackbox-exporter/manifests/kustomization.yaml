@@ -3,4 +3,5 @@ kind: Kustomization
 
 resources:
   - probe-kibarocert-frontend.yaml
+  - prometheusrule-kibarocert-frontend.yaml
   - networkpolicy-allow-monitoring.yaml

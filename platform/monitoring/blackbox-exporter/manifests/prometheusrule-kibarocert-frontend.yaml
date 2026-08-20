@@ -1,0 +1,84 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kibarocert-frontend-staging-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+    app.kubernetes.io/name: kibarocert-frontend
+    app.kubernetes.io/part-of: kibarocert
+    app.kubernetes.io/component: alerting
+    app.kubernetes.io/environment: staging
+spec:
+  groups:
+    - name: kibarocert-frontend-staging.availability
+      rules:
+        - alert: KibarocertFrontendUnavailable
+          expr: |
+            probe_success{
+              job="kibarocert-frontend-staging-health",
+              environment="staging"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+            application: kibarocert
+            component: frontend
+            environment: staging
+          annotations:
+            summary: "KibaroCert frontend staging is unavailable"
+            description: "The KibaroCert frontend health endpoint has failed continuously for more than two minutes."
+            runbook_url: "https://github.com/yiriah/KibaroCert-Front"
+
+        - alert: KibarocertFrontendUnexpectedHttpStatus
+          expr: |
+            probe_http_status_code{
+              job="kibarocert-frontend-staging-health",
+              environment="staging"
+            } != 200
+          for: 2m
+          labels:
+            severity: critical
+            application: kibarocert
+            component: frontend
+            environment: staging
+          annotations:
+            summary: "KibaroCert frontend returned an unexpected HTTP status"
+            description: "The KibaroCert frontend health endpoint has returned a non-200 HTTP status for more than two minutes."
+            runbook_url: "https://github.com/yiriah/KibaroCert-Front"
+
+        - alert: KibarocertFrontendHighLatency
+          expr: |
+            probe_duration_seconds{
+              job="kibarocert-frontend-staging-health",
+              environment="staging"
+            } > 1
+          for: 5m
+          labels:
+            severity: warning
+            application: kibarocert
+            component: frontend
+            environment: staging
+          annotations:
+            summary: "KibaroCert frontend staging latency is high"
+            description: "The KibaroCert frontend health probe has exceeded one second for more than five minutes."
+            runbook_url: "https://github.com/yiriah/KibaroCert-Front"
+
+        - alert: KibarocertFrontendProbeMissing
+          expr: |
+            absent(
+              probe_success{
+                job="kibarocert-frontend-staging-health",
+                environment="staging"
+              }
+            )
+          for: 5m
+          labels:
+            severity: critical
+            application: kibarocert
+            component: frontend
+            environment: staging
+          annotations:
+            summary: "KibaroCert frontend probe metrics are missing"
+            description: "Prometheus has received no KibaroCert frontend probe metric for more than five minutes."
+            runbook_url: "https://github.com/yiriah/KibaroCert-Front"
