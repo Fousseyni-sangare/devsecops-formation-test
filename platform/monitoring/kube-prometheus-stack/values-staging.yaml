@@ -1,4 +1,4 @@
-# Observability stack for the KibaroCert Minikube staging environment.
+# Observability stack for the KibaroCert Kubernetes staging environment.
 
 commonLabels:
   app.kubernetes.io/part-of: kibarocert
@@ -30,13 +30,75 @@ grafana:
   persistence:
     enabled: false
 
+  # Grafana previously consumed approximately 255 Mi while its memory
+  # limit was 256 Mi. The higher limit provides sufficient startup
+  # and runtime headroom.
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 192Mi
     limits:
       cpu: 300m
-      memory: 256Mi
+      memory: 512Mi
+
+  # Grafana can take time to initialize dashboards and plugins.
+  # During this period, liveness and readiness checks remain suspended.
+  startupProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+      scheme: HTTP
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+      scheme: HTTP
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+      scheme: HTTP
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+
+  # Dashboard and datasource sidecars share the Grafana Pod.
+  # They therefore require distinct health ports.
+  sidecar:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 192Mi
+
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      env:
+        HEALTH_PORT: "8081"
+
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+      isDefaultDatasource: true
+      uid: prometheus
+      env:
+        HEALTH_PORT: "8082"
 
 # Alertmanager is enabled without external notification receivers for now.
 alertmanager:
