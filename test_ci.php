@@ -1,0 +1,1 @@
+<?php echo 'Nginx et PHP fonctionnent correctement !'; ?>
