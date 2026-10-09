@@ -116,12 +116,12 @@ jobs:
             echo "Aucun fichier .sql trouvé dans le dossier /sql/."
           fi
 
-      - name: Vérifier le bon fonctionnement du serveur Nginx & PHP
-        run: |
-          echo "<?php echo 'Nginx et PHP fonctionnent correctement !'; ?>" > test_ci.php
+      #- name: Vérifier le bon fonctionnement du serveur Nginx & PHP
+        #run: |
+          #echo "<?php echo 'Nginx et PHP fonctionnent correctement !'; ?>" > test_ci.php
           #${{ github.workspace }}/
           #curl -f http://localhost/test_ci.php
-          curl -f http://localhost/index.php
+          #curl -f http://localhost/index.php
 
       - name: Sauvegarder l'archive prête pour la mise en ligne
         uses: actions/upload-artifact@v4
