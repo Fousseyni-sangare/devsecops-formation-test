@@ -1,0 +1,107 @@
+name: CI & Déploiement PHP/MySQL
+
+on:
+  push:
+    branches: [ "main", "formation" ]
+  pull_request:
+    branches: [ "main", "formation" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    # Configuration du conteneur MySQL pour les tests / l'importation
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: sm8jcMmw@GLZM
+          MYSQL_DATABASE: c1gh7184
+          MYSQL_USER: c1gh7184
+          MYSQL_PASSWORD: sm8jcMmw@GLZM
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - name: Récupérer le code source du dépôt
+        uses: actions/checkout@v4
+
+      - name: Extraire l'archive du projet
+        run: |
+          if [ -f "archive.zip" ]; then
+            echo "Extraction de archive.zip..."
+            unzip -o archive.zip -d ${{ github.workspace }}
+            echo "Extraction terminée."
+          else
+            echo "Erreur : Le fichier archive.zip n'a pas été trouvé à la racine du dépôt."
+            exit 1
+          fi
+
+      - name: Configuration de PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql, mysqli, xml, ctype, json
+          coverage: none
+
+      - name: Installer et démarrer Nginx & PHP-FPM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx php8.2-fpm
+          sudo systemctl start php8.2-fpm
+          sudo systemctl start nginx
+
+      - name: Configurer le VirtualHost Nginx
+        run: |
+          sudo bash -c 'cat << 'EOF' > /etc/nginx/sites-available/default
+          server {
+              listen 80 default_server;
+              listen [::]:80 default_server;
+
+              root ${{ github.workspace }};
+              index index.php index.html index.htm;
+
+              server_name localhost;
+
+              location / {
+                  try_files $uri $uri/ /index.php?$query_string;
+              }
+
+              location ~ \.php$ {
+                  include snippets/fastcgi-php.conf;
+                  fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  include fastcgi_params;
+              }
+
+              location ~ /\.ht {
+                  deny all;
+              }
+          }
+          EOF'
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+      - name: Importer les fichiers SQL du dossier /sql/
+        env:
+          MYSQL_PWD: sm8jcMmw@GLZM
+        run: |
+          if [ -d "./sql" ] && [ -n "$(ls -A ./sql/*.sql 2>/dev/null)" ]; then
+            echo "Dossier /sql/ trouvé. Importation des fichiers..."
+            for file in $(ls ./sql/*.sql | sort -V); do
+              echo "Importation de : $file"
+              mysql -h 127.0.0.1 -P 3306 -u root c1gh7184 < "$file"
+            done
+            echo "Tous les fichiers SQL ont été importés avec succès."
+          else
+            echo "Aucun fichier .sql trouvé dans le dossier /sql/."
+          fi
+
+      - name: Vérifier le bon fonctionnement du serveur Nginx & PHP
+        run: |
+          echo "<?php echo 'Nginx et PHP fonctionnent correctement !'; ?>" > ${{ github.workspace }}/test_ci.php
+          curl -f http://localhost/test_ci.php
