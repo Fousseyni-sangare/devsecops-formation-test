@@ -120,3 +120,9 @@ jobs:
         run: |
           echo "<?php echo 'Nginx et PHP fonctionnent correctement !'; ?>" > ${{ github.workspace }}/test_ci.php
           curl -f http://localhost/test_ci.php
+
+      - name: Sauvegarder l'archive prête pour la mise en ligne
+        uses: actions/upload-artifact@v4
+        with:
+          name: projet-deploiement-pret
+          path: ${{ github.workspace }}
