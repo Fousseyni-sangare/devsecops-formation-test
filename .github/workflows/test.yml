@@ -41,25 +41,37 @@ jobs:
             exit 1
           fi
 
-      - name: Configuration de PHP
+      - name: Configuration de PHP (avec FPM)
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           extensions: mbstring, pdo_mysql, mysqli, xml, ctype, json
+          tools: php-fpm
           coverage: none
 
-      - name: Installer et démarrer Nginx & PHP-FPM
+      - name: Installer et démarrer Nginx
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends nginx php8.2-fpm
-          sudo systemctl start php8.2-fpm
+          sudo apt-get install -y --no-install-recommends nginx
           sudo systemctl start nginx
 
       - name: Configurer le VirtualHost Nginx
         run: |
-          sudo bash -c 'cat << 'EOF' > /etc/nginx/sites-available/default
+          # Détection automatique du socket ou du port FastCGI configuré par setup-php
+          PHP_SOCK=$(ls /var/run/php/php8.2-fpm.sock /run/php/php8.2-fpm.sock 2>/dev/null | head -n 1)
+          
+          if [ -z "$PHP_SOCK" ]; then
+            # Si le socket Unix n'est pas présent, setup-php écoute par défaut sur 127.0.0.1:9000
+            FASTCGI_PASS="127.0.0.1:9000"
+          else
+            FASTCGI_PASS="unix:$PHP_SOCK"
+          fi
+          
+          echo "Utilisation de FastCGI: $FASTCGI_PASS"
+
+          sudo bash -c "cat << 'EOF' > /etc/nginx/sites-available/default
           server {
               listen 80 default_server;
               listen [::]:80 default_server;
@@ -70,13 +82,13 @@ jobs:
               server_name localhost;
 
               location / {
-                  try_files $uri $uri/ /index.php?$query_string;
+                  try_files \$uri \$uri/ /index.php?\$query_string;
               }
 
               location ~ \.php$ {
                   include snippets/fastcgi-php.conf;
-                  fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
-                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                  fastcgi_pass $FASTCGI_PASS;
+                  fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
                   include fastcgi_params;
               }
 
@@ -84,7 +96,8 @@ jobs:
                   deny all;
               }
           }
-          EOF'
+          EOF"
+          
           sudo nginx -t
           sudo systemctl reload nginx
 
