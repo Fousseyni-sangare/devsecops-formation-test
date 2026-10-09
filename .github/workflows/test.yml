@@ -118,7 +118,8 @@ jobs:
 
       - name: Vérifier le bon fonctionnement du serveur Nginx & PHP
         run: |
-          echo "<?php echo 'Nginx et PHP fonctionnent correctement !'; ?>" > ${{ github.workspace }}/test_ci.php
+          echo "<?php echo 'Nginx et PHP fonctionnent correctement !'; ?>" > test_ci.php
+          # ${{ github.workspace }}/
           curl -f http://localhost/test_ci.php
 
       - name: Sauvegarder l'archive prête pour la mise en ligne
