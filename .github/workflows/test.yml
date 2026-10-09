@@ -10,7 +10,6 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
-    # Configuration du conteneur MySQL pour les tests / l'importation
     services:
       mysql:
         image: mysql:8.0
@@ -26,18 +25,19 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
-    steps:
-      - name: Récupérer le code source du dépôt
-        uses: actions/checkout@v4
 
-      - name: Extraire l'archive du projet
+    steps:
+      - name: Récupérer le code source
+        uses: actions/checkout@v4.2.2
+
+      - name: Extraire l'archive ZIP
         run: |
           if [ -f "archive.zip" ]; then
             echo "Extraction de archive.zip..."
             unzip -o archive.zip -d ${{ github.workspace }}
-            echo "Extraction terminée."
+            echo "Archive extraite avec succès."
           else
-            echo "Erreur : Le fichier archive.zip n'a pas été trouvé à la racine du dépôt."
+            echo "Erreur : archive.zip est introuvable."
             exit 1
           fi
 
@@ -49,9 +49,11 @@ jobs:
           coverage: none
 
       - name: Installer et démarrer Nginx & PHP-FPM
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y nginx php8.2-fpm
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends nginx php8.2-fpm
           sudo systemctl start php8.2-fpm
           sudo systemctl start nginx
 
