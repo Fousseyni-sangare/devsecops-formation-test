@@ -46,7 +46,7 @@ jobs:
         with:
           php-version: '8.2'
           extensions: mbstring, pdo_mysql, mysqli, xml, ctype, json
-          tools: php-fpm
+          #tools: php-fpm
           coverage: none
 
       - name: Installer et démarrer Nginx
