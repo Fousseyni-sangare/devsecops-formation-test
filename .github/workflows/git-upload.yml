@@ -1,0 +1,59 @@
+name: Premier build Docker et publication GHCR
+
+on:
+  push:
+    branches: [formation, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Preparer le nom de l'image
+        shell: bash
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "IMAGE_NAME=${OWNER}/kibarocert-front" >> "$GITHUB_ENV"
+
+      - name: Afficher la destination
+        run: |
+          echo "Destination : ${REGISTRY}/${IMAGE_NAME}:premier-build"
+
+      - name: Se connecter a GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Construire l'image
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --tag "${REGISTRY}/${IMAGE_NAME}:premier-build" \
+            --tag "${REGISTRY}/${IMAGE_NAME}:atelier-sha-${GITHUB_SHA}" \
+            .
+
+      - name: Afficher l'image construite
+        run: docker image ls "${REGISTRY}/${IMAGE_NAME}"
+
+      - name: Enregistrer l'image dans GHCR
+        run: |
+          docker push "${REGISTRY}/${IMAGE_NAME}:premier-build"
+          docker push "${REGISTRY}/${IMAGE_NAME}:atelier-sha-${GITHUB_SHA}"
+
+      - name: Afficher les references publiees
+        run: |
+          echo "Image : ${REGISTRY}/${IMAGE_NAME}:premier-build"
+          echo "Image du commit : ${REGISTRY}/${IMAGE_NAME}:atelier-sha-${GITHUB_SHA}"
