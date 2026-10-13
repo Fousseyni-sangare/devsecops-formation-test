@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - dev
-      - ci-cd
+      - naboua_branche
       - main
     paths:
       - "src/**"
@@ -28,7 +28,7 @@ on:
   push:
     branches:
       - dev
-      - ci-cd
+      - naboua_branche
       - main
     paths:
       - "src/**"
