@@ -1,4 +1,4 @@
-name: Security SAST and DAST
+name: Security SAST and DAST new
 
 on:
   pull_request:
