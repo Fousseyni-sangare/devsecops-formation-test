@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "IMAGE_NAME=${OWNER}/kibarocert-front" >> "$GITHUB_ENV"
+          echo "IMAGE_NAME=${OWNER}/devsecops-formation-test" >> "$GITHUB_ENV"
 
       - name: Afficher la destination
         run: |
