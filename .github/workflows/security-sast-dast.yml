@@ -60,7 +60,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  TEST_IMAGE: kibarocert-frontend:security-${{ github.sha }}
+  TEST_IMAGE: devsecops-formation-test:security-${{ github.sha }}
 
 jobs:
   semgrep-sast:
