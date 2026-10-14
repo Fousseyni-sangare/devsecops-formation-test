@@ -36,7 +36,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/kibarocert-frontend
+  IMAGE_NAME: ${{ github.repository_owner }}/devsecops-formation-test
 
 jobs:
   validate:
@@ -99,14 +99,14 @@ jobs:
           context: .
           load: true
           push: false
-          tags: kibarocert-frontend:pr-test
+          tags: devsecops-formation-test:pr-test
 
       - name: Start smoke test container
         run: |
           docker run --detach \
             --name frontend-smoke \
             --publish 8080:8080 \
-            kibarocert-frontend:pr-test
+            devsecops-formation-test:pr-test
 
       - name: Smoke test /healthz
         run: |

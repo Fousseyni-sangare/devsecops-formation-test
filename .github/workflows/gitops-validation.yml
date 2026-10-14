@@ -65,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ENCRYPTED_SECRET="k8s/overlays/local/secrets/kibarocert-frontend-secret.sops.yaml"
+          ENCRYPTED_SECRET="k8s/overlays/local/secrets/devsecops-formation-test-secret.sops.yaml"
           GENERATOR="k8s/overlays/local/secret-generator.yaml"
 
           test -f ".sops.yaml"
@@ -102,7 +102,7 @@ jobs:
 
           grep --quiet \
             --fixed-strings \
-            "./secrets/kibarocert-frontend-secret.sops.yaml" \
+            "./secrets/devsecops-formation-test-secret.sops.yaml" \
             "${GENERATOR}"
 
           echo "The local Secret is protected by SOPS and references an Age recipient."

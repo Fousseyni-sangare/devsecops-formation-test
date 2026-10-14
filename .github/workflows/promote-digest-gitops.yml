@@ -25,7 +25,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/kibarocert-frontend
+  IMAGE_NAME: ${{ github.repository_owner }}/devsecops-formation-test
   STAGING_KUSTOMIZATION: k8s/overlays/staging/kustomization.yaml
 
 jobs:
@@ -230,7 +230,7 @@ jobs:
           if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
               raise SystemExit(f"Invalid digest: {digest}")
 
-          image_name = "ghcr.io/yiriah/kibarocert-frontend"
+          image_name = "ghcr.io/yiriah/devsecops-formation-test"
 
           if f"name: {image_name}" not in content:
               raise SystemExit(
