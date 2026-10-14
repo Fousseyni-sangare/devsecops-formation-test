@@ -6,6 +6,7 @@ on:
       - dev
       - ci-cd
       - main
+      - formation
     paths:
       - "k8s/**"
       - "argocd/**"
@@ -17,6 +18,7 @@ on:
       - dev
       - ci-cd
       - main
+      - formation
     paths:
       - "k8s/**"
       - "argocd/**"
