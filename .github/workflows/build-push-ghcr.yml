@@ -1,4 +1,4 @@
-name: Build and publish frontend image
+name: Build and publish frontend image sign
 
 on:
   pull_request:
